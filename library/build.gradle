@@ -1,7 +1,8 @@
 apply plugin: 'com.android.library'
+apply plugin: 'maven'
 
-def VERSION_CODE = 1
-def VERSION_NAME = '2.1.0'
+def VERSION_CODE = 20101
+def VERSION_NAME = '2.1.1'
 
 android {
     compileSdkVersion 22
@@ -33,4 +34,65 @@ android {
 dependencies {
     compile fileTree(dir: 'libs', include: ['*.jar'])
     compile 'com.android.support:support-v4:22.0.0'
+}
+
+repositories {
+    maven { url 'http://maven.ckpd.co/artifacts/' }
+    mavenCentral()
+}
+
+// upload
+android.libraryVariants.all { variant ->
+    if (variant.name == 'release') {
+        task(javadoc, type: Javadoc) {
+            exclude "**/R.java"
+            options.encoding 'UTF-8'
+
+            source variant.javaCompile.source
+            def androidJars = android.bootClasspath
+            classpath += files(variant.javaCompile.classpath) + files(androidJars)
+        }
+        task(javadocJar, type: Jar, dependsOn: javadoc) {
+            classifier 'javadoc'
+            from javadoc.destinationDir
+        }
+
+        task(sourcesJar, type: Jar) {
+            classifier 'sources'
+            from android.sourceSets.main.java.sourceFiles
+        }
+
+        artifacts {
+            archives javadocJar
+            archives sourcesJar
+        }
+    }
+}
+uploadArchives.repositories.mavenDeployer {
+    repository url: 'http://maven.ckpd.co/artifacts'
+    pom.groupId = 'com.cookpad.lib'
+    pom.artifactId = 'issue-reporter'
+    pom.version = VERSION_NAME
+}
+
+//releng
+def git(String command) {
+    def proc = ["sh", "-c", "cd ${project.rootDir} ; git ${command}"].execute()
+    if (proc.waitFor() != 0) {
+        throw new GradleException(proc.err.text.trim())
+    }
+    return proc.in.text;
+}
+
+task 'releng' << {
+    def timestamp = new Date().format("yyyyMMddHHmm")
+    def tag = "v${android.defaultConfig.versionName}-${timestamp}"
+
+    println "[releng] makeing a release engineering for $tag (${git('rev-parse HEAD').trim()}))"
+
+    println "[releng] git tag $tag"
+    git "tag $tag"
+
+    println "[releng] git push origin $tag"
+    git "push origin $tag"
 }
